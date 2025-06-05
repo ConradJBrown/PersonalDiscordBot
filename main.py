@@ -106,7 +106,25 @@ async def add_task_user(ctx, member: discord.Member, *, task):
     await set_tasks(tasks, user_id=member.id)
     await ctx.send(f'Added task for {member.display_name}!')
 
+@bot.command(name='edit', help='Edit a task in your personal list. Usage: !edit <task_number> <new_task>')
+async def edit_task(ctx, index: int, *, new_task):
+    tasks = await get_tasks(user_id=ctx.author.id)
+    if 1 <= index <= len(tasks):
+        tasks[index - 1] = new_task
+        await set_tasks(tasks, user_id=ctx.author.id)
+        await ctx.send(f'Task {index} updated!')
+    else:
+        await ctx.send('Invalid task number!')
 
+@bot.command(name='edit_user', help="Edit a task in another user's list. Usage: !edit_user @username <task_number> <new_task>")
+async def edit_task_user(ctx, member: discord.Member, index: int, *, new_task):
+    tasks = await get_tasks(user_id=member.id)
+    if 1 <= index <= len(tasks):
+        tasks[index - 1] = new_task
+        await set_tasks(tasks, user_id=member.id)
+        await ctx.send(f"Task {index} updated for {member.display_name}!")
+    else:
+        await ctx.send('Invalid task number!')
 # Command to mark a task as completed.
 @bot.command(name='complete', help='Marks a personal task as completed')
 async def complete_task(ctx, index: int):
