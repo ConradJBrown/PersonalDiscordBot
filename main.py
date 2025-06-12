@@ -3,8 +3,6 @@ from discord.ext import commands
 import config
 from db import migrate_schema, get_tasks, set_tasks, complete_task
 
-import datetime
-
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
