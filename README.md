@@ -1,55 +1,135 @@
-# Bot README
+## 📝 Discord To-Do Bot
 
-## Table of Contents
+A simple yet powerful Discord bot that helps users manage personal tasks and a shared grocery list. Built using Python and `discord.py`, with a persistent SQLite database and reaction-based task completion.
 
-*   [Overview](#overview)
-*   [Features](#features)
-*   [Usage](#usage)
-*   [Configuration](#configuration)
-*   [Running the Bot](#running-the-bot)
-*   [Contributing](#contributing)
+---
 
-## Overview
+### 📦 Features
 
-This is a simple Todo bot built using Discord.py. It allows users to add, complete, and view tasks in their Discord server.
+* ✅ **Personal to-do lists**
+* 👥 **Assign tasks to other users**
+* 🛒 **Shared grocery list**
+* ✏️ **Edit tasks easily**
+* ♻️ **Mark tasks complete by reacting**
+* 💾 **Persistent database with schema migration**
+* 🧩 **Modular, easy-to-extend architecture**
 
-## Features
+---
 
-*   **Task Management**: Users can add new tasks using the `!todo add <task>` command.
-*   **Task Completion**: Users can mark tasks as completed using the `!todo complete <index>` command.
-*   **Task List**: The bot displays a list of all tasks, including their completion status.
+### 🚀 Getting Started
 
-## Usage
+#### 1. Clone the repo
 
-To use this bot in your Discord server:
+```bash
+git clone https://github.com/yourusername/discord-todo-bot.git
+cd discord-todo-bot
+```
 
-1.  Create a new application on the [Discord Developer Portal](https://discord.com/developers/applications).
-2.  Invite the bot to your server using the link provided by the Developer Portal.
-3.  Configure the bot's settings, such as its prefix and token, in the `config.py` file.
+#### 2. Install dependencies
 
-## Configuration
+```bash
+pip install -r requirements.txt
+```
 
-This bot stores its configuration in a `config.py` file. You'll need to update this file with your own settings:
+***Dependencies include:***
 
-*   **TOKEN**: Your bot's Discord API token.
-*   **CLIENT_ID**: Your bot's client ID from the Developer Portal.
-*   **PERMISSIONS_VALUE**: The permissions value for your bot, also found on the Developer Portal.
+* `discord.py`
+* `aiosqlite`
+* `python-dotenv` (optional for token management)
 
-## Running the Bot
+#### 3. Configure your bot
 
-To run the bot, simply execute `python main.py` in your terminal. Make sure you have Python 3.x installed and Discord.py is up to date.
+🔐 Important: Copy config_example.py to config.py and fill in your actual bot token and info:
 
-## Contributing
+```bash
+cp config_example.py config.py
+```
 
-If you'd like to contribute to this project or use it as a starting point for your own bot:
+#### 4. Run the bot
 
-1.  Fork this repository on GitHub.
-2.  Update the `config.py` file with your own settings.
-3.  Modify the `main.py` file to suit your needs.
-4.  Run `python main.py` to start the bot.
+```bash
+python main.py
+```
 
-Note: This bot is intended for personal use only and may not work as-is in production environments. You'll need to adapt it to fit your specific requirements.
+---
 
-## License
+### 🤖 Bot Commands
 
-This project uses the [MIT License](https://opensource.org/licenses/MIT). See the LICENSE file for more information.
+#### 📋 Personal Tasks
+
+| Command                       | Description              |
+| ----------------------------- | ------------------------ |
+| `!todo`                       | Show your tasks          |
+| `!add Buy milk`               | Add a task               |
+| `!edit 1 Walk dog`            | Edit task #1             |
+| `!complete 2`                 | Complete task #2         |
+| `!todo_user @user`            | Show another user’s list |
+| `!add_user @user Task`        | Add task to another user |
+| `!edit_user @user 1 New task` | Edit task for a user     |
+
+#### 🛒 Grocery List
+
+| Command               | Description              |
+| --------------------- | ------------------------ |
+| `!grocery`            | Show grocery list        |
+| `!grocery_add Apples` | Add item to grocery list |
+| `!grocery_complete 1` | Remove item #1           |
+
+#### ℹ️ Help
+
+| Command | Description       |
+| ------- | ----------------- |
+| `!help` | Show all commands |
+
+#### 🎉 Reactions
+
+* React with ✅ to a task message to mark it complete!
+* Only the user who owns the task can complete it.
+
+---
+
+### 💾 Database & Persistence
+
+This bot uses `SQLite` and automatically migrates schema when launched, so:
+
+* ✅ No need to reset the DB manually
+* ✅ Data is not lost between runs
+* ✅ Can be extended in the future
+
+**Your tasks are stored in a file named `tasks.db` by default.**
+
+---
+
+### 🔧 Structure
+
+```
+discord-todo-bot/
+├── main.py         # Bot logic
+├── db.py           # DB access & schema migrations
+├── config.py       # Your token & config
+├── requirements.txt
+└── README.md
+```
+
+---
+
+### 📈 Roadmap Ideas (Optional)
+
+* Slash command support
+* Task reminders
+* Deadlines & priorities
+* Task categories or tags
+* Web dashboard or mobile integration
+
+---
+
+### 🛠️ Contributing
+
+Pull requests are welcome! Please open an issue first to discuss major changes.
+
+---
+
+### 📄 License
+
+MIT License
+
