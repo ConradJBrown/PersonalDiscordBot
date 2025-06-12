@@ -21,8 +21,8 @@ A simple yet powerful Discord bot that helps users manage personal tasks and a s
 #### 1. Clone the repo
 
 ```bash
-git clone https://github.com/yourusername/discord-todo-bot.git
-cd discord-todo-bot
+git clone https://github.com/ConradJBrown/PersonalDiscordBot.git
+cd PersonalDiscordBot
 ```
 
 #### 2. Install dependencies
