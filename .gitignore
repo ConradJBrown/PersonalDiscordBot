@@ -2,3 +2,5 @@ config.py
 __pycache__/config.cpython-313.pyc
 tasks.db
 tasks.db
+tasks.db
+.gitignore

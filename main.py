@@ -149,7 +149,7 @@ async def on_reaction_add(reaction, user):
 # ================================
 #              HELP
 # ================================
-
+bot.remove_command('help')
 @bot.command(name='help', help='Displays all commands')
 async def help_command(ctx):
     help_text = "**Available Commands:**\n"
