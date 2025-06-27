@@ -52,7 +52,7 @@ async def set_tasks(tasks, user_id=None, list_type="personal"):
             await db.execute('DELETE FROM tasks WHERE list_type = ?', ("grocery",))
             await db.executemany(
                 'INSERT INTO tasks (user_id, list_type, task, created_at) VALUES (?, ?, ?, ?)', 
-                [("shared", "grocery", t["task"] if isinstance(t, dict) else t, datetime.datetime.utcnow().isoformat()) for t in tasks]
+                [("shared", "grocery", str(t["task"]) if isinstance(t, dict) else str(t), datetime.datetime.utcnow().isoformat()) for t in tasks]
             )
         else:
             await db.execute('DELETE FROM tasks WHERE user_id = ? AND list_type = ?', (str(user_id), "personal"))

@@ -107,12 +107,15 @@ async def display_grocery(ctx):
     for i, task in enumerate(tasks, start=1):
         await ctx.send(f'{i}. {task["task"]}')
 
-@bot.command(name='grocery_add', help='Add to the grocery list: !grocery_add item')
+@bot.command(name='grocery_add', help='Adds an item to the grocery list')
 async def add_grocery(ctx, *, item):
     tasks = await get_tasks(list_type="grocery")
-    tasks.append(item)
+    
+    # Ensure we're only appending the task text
+    tasks.append(item if isinstance(item, str) else str(item))
+
     await set_tasks(tasks, list_type="grocery")
-    await ctx.send(f'Added "{item}" to the grocery list!')
+    await ctx.send(f'Added \"{item}\" to the grocery list!')
 
 @bot.command(name='grocery_complete', help='Remove item: !grocery_complete <item_number>')
 async def complete_grocery(ctx, index: int):
