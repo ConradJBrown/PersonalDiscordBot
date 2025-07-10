@@ -29,22 +29,32 @@ async def migrate_schema():
         await db.commit()
 
 
-# Fetch tasks (filtered by user, list type, and completion)
-async def get_tasks(user_id=None, list_type="personal", completed_only=False):
+# Fetch tasks (filtered by user, list type, category, and completion)
+async def get_tasks(user_id=None, list_type="personal", category=None, completed_only=False):
     async with aiosqlite.connect(DB_FILE) as db:
         if list_type == "grocery":
             query = 'SELECT id, task FROM tasks WHERE list_type = ? AND completed = 0'
-            params = ("grocery",)
+            params = ["grocery"]
+            if category:
+                query += ' AND category = ?'
+                params.append(category)
         elif completed_only:
             query = 'SELECT id, task FROM tasks WHERE user_id = ? AND list_type = ? AND completed = 1'
-            params = (str(user_id), "personal")
+            params = [str(user_id), "personal"]
+            if category:
+                query += ' AND category = ?'
+                params.append(category)
         else:
             query = 'SELECT id, task FROM tasks WHERE user_id = ? AND list_type = ? AND completed = 0'
-            params = (str(user_id), "personal")
+            params = [str(user_id), "personal"]
+            if category:
+                query += ' AND category = ?'
+                params.append(category)
 
         cursor = await db.execute(query, params)
         rows = await cursor.fetchall()
         return [{"id": row[0], "task": row[1]} for row in rows]
+
 
 # Replace all tasks for a user or list
 async def set_tasks(tasks, user_id=None, list_type="personal"):

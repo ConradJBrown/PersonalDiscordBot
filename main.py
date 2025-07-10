@@ -3,6 +3,7 @@ from discord.ext import commands
 import config
 import aiosqlite
 from db import migrate_schema, get_tasks, set_tasks, complete_task
+import asyncio  # Make sure this is imported at the top
 
 DB_FILE = "tasks.db"  # Path to your SQLite database file
 
@@ -25,38 +26,33 @@ async def on_ready():
 #           TASK COMMANDS
 # ================================
 
-@bot.command(name='todo', help='Displays your personal todo list')
-async def display_todo(ctx):
-    tasks = await get_tasks(user_id=ctx.author.id)
+@bot.command(name='todo', help='Displays your personal todo list. Optional: !todo <category>')
+async def display_todo(ctx, category: str = "general"):
+    tasks = await get_tasks(user_id=ctx.author.id, category=category)
+
     if not tasks:
-        await ctx.send('No tasks added yet!')
+        await ctx.send(f'No tasks found in **{category}** category!')
     else:
-        grouped = {}
-        for task in tasks:
-            category = task.get("category") or "Uncategorized"
-            grouped.setdefault(category, []).append(task)
-
-        for cat, task_list in grouped.items():
-            await ctx.send(f'**📂 {cat}**')
-            for i, task in enumerate(task_list, start=1):
-                msg = await ctx.send(f'{i}. {task["task"]}')
-                await msg.add_reaction("✅")
-                bot.task_message_map[msg.id] = {
-                    "task_id": task["id"],
-                    "user_id": ctx.author.id
-                }
+        await ctx.send(f"**{category.capitalize()} Tasks:**")
+        for i, task in enumerate(tasks, start=1):
+            msg = await ctx.send(f'{i}. {task["task"]}')
+            await msg.add_reaction("✅")
+            bot.task_message_map[msg.id] = {
+                "task_id": task["id"],
+                "user_id": ctx.author.id
+            }
+            await asyncio.sleep(1.2)  # Avoid rate limiting
 
 
-@bot.command(name='add', help='Adds a new task. Optional: !add "task" --category=home')
-async def add_task(ctx, *, content):
-    parts = content.split('--category=')
-    task_text = parts[0].strip()
-    category = parts[1].strip() if len(parts) > 1 else None
 
-    tasks = await get_tasks(user_id=ctx.author.id)
-    tasks.append({"task": task_text, "category": category})
-    await set_tasks(tasks, user_id=ctx.author.id)
-    await ctx.send(f'Task added{" to " + category if category else ""}! ✅')
+
+@bot.command(name='add', help='Adds a task. Usage: !add <category> <task>')
+async def add_task(ctx, category: str, *, task: str):
+    tasks = await get_tasks(user_id=ctx.author.id, category=category)
+    tasks.append({"task": task, "category": category})
+    await set_tasks(tasks, user_id=ctx.author.id, category=category)
+    await ctx.send(f'Task added to **{category}**!')
+
 
 
 @bot.command(name='edit', help='Edit a task: !edit <task_number> <new_task>')
@@ -120,16 +116,18 @@ async def edit_task_user(ctx, member: discord.Member, index: int, *, new_task):
 async def display_grocery(ctx):
     tasks = await get_tasks(list_type="grocery")
     if not tasks:
-        await ctx.send('Grocery list is empty!')
+        await ctx.send("Grocery list is empty!")
     else:
-        await ctx.send("Grocery List:")
+        await ctx.send("**Grocery List:**")
         for i, task in enumerate(tasks, start=1):
             msg = await ctx.send(f'{i}. {task["task"]}')
             await msg.add_reaction("✅")
             bot.task_message_map[msg.id] = {
                 "task_id": task["id"],
-                "user_id": None  # Allow anyone to check it off
+                "user_id": "shared"
             }
+            await asyncio.sleep(1.2)
+
 
 @bot.command(name='grocery_add', help='Adds an item to the grocery list')
 async def add_grocery(ctx, *, item):
@@ -179,28 +177,27 @@ async def on_reaction_add(reaction, user):
 
 
 # ================================
-#              HELP
+#              HELP COMMAND
 # ================================
 bot.remove_command('help')
+
 @bot.command(name='help', help='Displays all commands')
 async def help_command(ctx):
     help_text = "**Available Commands:**\n"
+    seen = set()
+
     for command in bot.commands:
-        if not command.hidden:
-            help_text += f'`!{command.name}` - {command.help}\n'
+        if command.qualified_name not in seen and not command.hidden and not command.aliases:
+            help_text += f'`!{command.qualified_name}` - {command.help}\n'
+            seen.add(command.qualified_name)
+
     await ctx.send(help_text)
+
+
 
 # ================================
 #              ERROR HANDLING
 # ================================
-bot.remove_command('help')
-@bot.command(name='help', help='Displays all commands')
-async def help_command(ctx):
-    help_text = "**Available Commands:**\n"
-    for command in bot.commands:
-        if not command.hidden:
-            help_text += f'`!{command.name}` - {command.help}\n'
-    await ctx.send(help_text)
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
