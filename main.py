@@ -187,7 +187,7 @@ async def help_command(ctx):
     seen = set()
 
     for command in bot.commands:
-        if command.qualified_name not in seen and not command.hidden and not command.aliases:
+        if command.qualified_name not in seen and not command.hidden:
             help_text += f'`!{command.qualified_name}` - {command.help}\n'
             seen.add(command.qualified_name)
 
