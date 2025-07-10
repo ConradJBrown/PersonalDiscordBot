@@ -4,6 +4,8 @@ import config
 import aiosqlite
 from db import migrate_schema, get_tasks, set_tasks, complete_task
 
+DB_FILE = "tasks.db"  # Path to your SQLite database file
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
