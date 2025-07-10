@@ -7,26 +7,27 @@ SCHEMA_VERSION = 1
 
 # Automatically run this on startup
 async def migrate_schema():
-    db_exists = os.path.exists(DB_FILE)
-
     async with aiosqlite.connect(DB_FILE) as db:
-        await db.execute("PRAGMA journal_mode=WAL")
-
-        if not db_exists:
-            print("Creating new database.")
-        
-        # Create table if it doesn't exist
         await db.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT,
-                list_type TEXT,
-                task TEXT,
-                created_at TEXT,
-                completed INTEGER DEFAULT 0
-            )
+                list_type TEXT NOT NULL,
+                task TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                category TEXT
+            );
         """)
+        # Add 'category' column if it doesn't exist
+        await db.execute("""
+            PRAGMA foreign_keys=off;
+        """)
+        try:
+            await db.execute("SELECT category FROM tasks LIMIT 1")
+        except aiosqlite.OperationalError:
+            await db.execute("ALTER TABLE tasks ADD COLUMN category TEXT;")
         await db.commit()
+
 
 # Fetch tasks (filtered by user, list type, and completion)
 async def get_tasks(user_id=None, list_type="personal", completed_only=False):
@@ -51,14 +52,14 @@ async def set_tasks(tasks, user_id=None, list_type="personal"):
         if list_type == "grocery":
             await db.execute('DELETE FROM tasks WHERE list_type = ?', ("grocery",))
             await db.executemany(
-                'INSERT INTO tasks (user_id, list_type, task, created_at) VALUES (?, ?, ?, ?)', 
-                [("shared", "grocery", str(t["task"]) if isinstance(t, dict) else str(t), datetime.datetime.utcnow().isoformat()) for t in tasks]
+                'INSERT INTO tasks (user_id, list_type, task, created_at, category) VALUES (?, ?, ?, ?, ?)',
+                [("shared", "grocery", t["task"] if isinstance(t, dict) else t, datetime.datetime.utcnow().isoformat(), t.get("category") if isinstance(t, dict) else None) for t in tasks]
             )
         else:
             await db.execute('DELETE FROM tasks WHERE user_id = ? AND list_type = ?', (str(user_id), "personal"))
             await db.executemany(
-                'INSERT INTO tasks (user_id, list_type, task, created_at) VALUES (?, ?, ?, ?)', 
-                [(str(user_id), "personal", t["task"] if isinstance(t, dict) else t, datetime.datetime.utcnow().isoformat()) for t in tasks]
+                'INSERT INTO tasks (user_id, list_type, task, created_at, category) VALUES (?, ?, ?, ?, ?)',
+                [(str(user_id), "personal", t["task"] if isinstance(t, dict) else t, datetime.datetime.utcnow().isoformat(), t.get("category") if isinstance(t, dict) else None) for t in tasks]
             )
         await db.commit()
 
