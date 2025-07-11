@@ -1,86 +1,78 @@
 import aiosqlite
-import datetime
-import os
 
 DB_FILE = "tasks.db"
-SCHEMA_VERSION = 1
 
-# Automatically run this on startup
+# -----------------------
+# Database Setup / Migrate
+# -----------------------
+
 async def migrate_schema():
     async with aiosqlite.connect(DB_FILE) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT,
-                list_type TEXT NOT NULL,
+                user_id INTEGER,
                 task TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                category TEXT
-            );
+                category TEXT DEFAULT 'general'
+            )
         """)
-        # Add 'category' column if it doesn't exist
-        await db.execute("""
-            PRAGMA foreign_keys=off;
-        """)
-        try:
-            await db.execute("SELECT category FROM tasks LIMIT 1")
-        except aiosqlite.OperationalError:
-            await db.execute("ALTER TABLE tasks ADD COLUMN category TEXT;")
         await db.commit()
 
+# -----------------------
+# Task Utilities
+# -----------------------
 
-# Fetch tasks (filtered by user, list type, category, and completion)
-async def get_tasks(user_id=None, list_type="personal", category=None, completed_only=False):
+async def get_tasks(user_id=None, category=None, list_type=None):
+    query = "SELECT id, task, category FROM tasks"
+    conditions = []
+    params = []
+
+    if list_type == "grocery":
+        conditions.append("user_id IS NULL")
+        conditions.append("category = 'grocery'")
+    else:
+        if user_id is not None:
+            conditions.append("user_id = ?")
+            params.append(user_id)
+        if category:
+            conditions.append("category = ?")
+            params.append(category)
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY id"
+
     async with aiosqlite.connect(DB_FILE) as db:
-        if list_type == "grocery":
-            query = 'SELECT id, task FROM tasks WHERE list_type = ? AND completed = 0'
-            params = ["grocery"]
-            if category:
-                query += ' AND category = ?'
-                params.append(category)
-        elif completed_only:
-            query = 'SELECT id, task FROM tasks WHERE user_id = ? AND list_type = ? AND completed = 1'
-            params = [str(user_id), "personal"]
-            if category:
-                query += ' AND category = ?'
-                params.append(category)
-        else:
-            query = 'SELECT id, task FROM tasks WHERE user_id = ? AND list_type = ? AND completed = 0'
-            params = [str(user_id), "personal"]
-            if category:
-                query += ' AND category = ?'
-                params.append(category)
-
+        db.row_factory = aiosqlite.Row
         cursor = await db.execute(query, params)
         rows = await cursor.fetchall()
-        return [{"id": row[0], "task": row[1]} for row in rows]
+        await cursor.close()
+        return [dict(row) for row in rows]
 
-
-# Replace all tasks for a user or list
-async def set_tasks(tasks, user_id=None, list_type="personal"):
+async def set_tasks(tasks, user_id=None, category=None, list_type=None):
     async with aiosqlite.connect(DB_FILE) as db:
+        # Delete existing tasks for the user/category/list
         if list_type == "grocery":
-            await db.execute('DELETE FROM tasks WHERE list_type = ?', ("grocery",))
-            await db.executemany(
-                'INSERT INTO tasks (user_id, list_type, task, created_at, category) VALUES (?, ?, ?, ?, ?)',
-                [("shared", "grocery", t["task"] if isinstance(t, dict) else t, datetime.datetime.utcnow().isoformat(), t.get("category") if isinstance(t, dict) else None) for t in tasks]
-            )
-        else:
-            await db.execute('DELETE FROM tasks WHERE user_id = ? AND list_type = ?', (str(user_id), "personal"))
-            await db.executemany(
-                'INSERT INTO tasks (user_id, list_type, task, created_at, category) VALUES (?, ?, ?, ?, ?)',
-                [(str(user_id), "personal", t["task"] if isinstance(t, dict) else t, datetime.datetime.utcnow().isoformat(), t.get("category") if isinstance(t, dict) else None) for t in tasks]
+            await db.execute("DELETE FROM tasks WHERE user_id IS NULL AND category = 'grocery'")
+        elif user_id is not None:
+            if category:
+                await db.execute("DELETE FROM tasks WHERE user_id = ? AND category = ?", (user_id, category))
+            else:
+                await db.execute("DELETE FROM tasks WHERE user_id = ?", (user_id,))
+        await db.commit()
+
+        # Insert updated tasks
+        for task in tasks:
+            task_text = task["task"] if isinstance(task, dict) else str(task)
+            task_category = task.get("category", category or "general") if isinstance(task, dict) else (category or "general")
+
+            await db.execute(
+                "INSERT INTO tasks (user_id, task, category) VALUES (?, ?, ?)",
+                (None if list_type == "grocery" else user_id, task_text, task_category)
             )
         await db.commit()
 
-# Mark a task as completed (by ID)
-async def complete_task(task_id: int):
+async def complete_task(task_id):
     async with aiosqlite.connect(DB_FILE) as db:
-        await db.execute('UPDATE tasks SET completed = 1 WHERE id = ?', (task_id,))
-        await db.commit()
-
-# Hard-delete a task (rarely needed)
-async def delete_task(task_id: int):
-    async with aiosqlite.connect(DB_FILE) as db:
-        await db.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
+        await db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         await db.commit()
