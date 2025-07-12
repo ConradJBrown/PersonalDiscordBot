@@ -66,6 +66,7 @@ async def set_tasks(tasks, user_id=None, category=None, list_type=None):
             task_text = task["task"] if isinstance(task, dict) else str(task)
             task_category = task.get("category", category or "general") if isinstance(task, dict) else (category or "general")
 
+
             await db.execute(
                 "INSERT INTO tasks (user_id, task, category) VALUES (?, ?, ?)",
                 (None if list_type == "grocery" else user_id, task_text, task_category)
