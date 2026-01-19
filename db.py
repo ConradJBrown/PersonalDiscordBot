@@ -116,7 +116,8 @@ async def set_tasks(tasks, user_id=None, category=None, list_type=None):
                 (None if list_type == "grocery" else user_id, task_text, task_category, task_priority, task_due_date)
             )
         await db.commit()
-, completed_by=None):
+
+async def complete_task(task_id, completed_by=None):
     """Mark a task as complete by moving it to completed_tasks table"""
     async with aiosqlite.connect(DB_FILE) as db:
         # Get the task details before deleting
@@ -244,6 +245,5 @@ async def get_dinner_ideas():
 async def remove_dinner_idea(dinner_id):
     """Remove a dinner idea"""
     async with aiosqlite.connect(DB_FILE) as db:
-        await db.execute("DELETE FROM dinner_ideas WHERE id = ?", (dinner
-        await db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        await db.execute("DELETE FROM dinner_ideas WHERE id = ?", (dinner_id,))
         await db.commit()
