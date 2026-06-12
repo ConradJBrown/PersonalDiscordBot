@@ -12,6 +12,7 @@ async def migrate_schema():
         await db.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_id INTEGER,
                 user_id INTEGER,
                 task TEXT NOT NULL,
                 category TEXT DEFAULT 'general',
@@ -26,6 +27,7 @@ async def migrate_schema():
             CREATE TABLE IF NOT EXISTS completed_tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 original_task_id INTEGER,
+                channel_id INTEGER,
                 user_id INTEGER,
                 task TEXT NOT NULL,
                 category TEXT DEFAULT 'general',
@@ -56,6 +58,14 @@ async def migrate_schema():
             await db.execute("ALTER TABLE tasks ADD COLUMN due_date TEXT")
         if 'created_at' not in column_names:
             await db.execute("ALTER TABLE tasks ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        if 'channel_id' not in column_names:
+            await db.execute("ALTER TABLE tasks ADD COLUMN channel_id INTEGER")
+
+        cursor = await db.execute("PRAGMA table_info(completed_tasks)")
+        ct_columns = await cursor.fetchall()
+        ct_column_names = [col[1] for col in ct_columns]
+        if 'channel_id' not in ct_column_names:
+            await db.execute("ALTER TABLE completed_tasks ADD COLUMN channel_id INTEGER")
             
         await db.commit()
 
@@ -63,14 +73,17 @@ async def migrate_schema():
 # Task Utilities
 # -----------------------
 
-async def get_tasks(user_id=None, category=None, list_type=None):
-    query = "SELECT id, task, category, priority, due_date, created_at FROM tasks"
+async def get_tasks(user_id=None, category=None, list_type=None, channel_id=None):
+    query = "SELECT id, user_id, task, category, priority, due_date, created_at FROM tasks"
     conditions = []
     params = []
 
     if list_type == "grocery":
         conditions.append("user_id IS NULL")
         conditions.append("category = 'grocery'")
+    elif channel_id is not None:
+        conditions.append("channel_id = ?")
+        params.append(channel_id)
     else:
         if user_id is not None:
             conditions.append("user_id = ?")
@@ -91,6 +104,15 @@ async def get_tasks(user_id=None, category=None, list_type=None):
         rows = await cursor.fetchall()
         await cursor.close()
         return [dict(row) for row in rows]
+
+async def insert_task(channel_id, user_id, task, category="general", priority="medium", due_date=None):
+    """Insert a single task tied to a Discord channel."""
+    async with aiosqlite.connect(DB_FILE) as db:
+        await db.execute(
+            "INSERT INTO tasks (channel_id, user_id, task, category, priority, due_date) VALUES (?, ?, ?, ?, ?, ?)",
+            (channel_id, user_id, task, category, priority, due_date)
+        )
+        await db.commit()
 
 async def set_tasks(tasks, user_id=None, category=None, list_type=None):
     async with aiosqlite.connect(DB_FILE) as db:
@@ -122,7 +144,7 @@ async def complete_task(task_id, completed_by=None):
     async with aiosqlite.connect(DB_FILE) as db:
         # Get the task details before deleting
         cursor = await db.execute(
-            "SELECT id, user_id, task, category, priority FROM tasks WHERE id = ?",
+            "SELECT id, channel_id, user_id, task, category, priority FROM tasks WHERE id = ?",
             (task_id,)
         )
         task = await cursor.fetchone()
@@ -131,9 +153,9 @@ async def complete_task(task_id, completed_by=None):
             # Insert into completed_tasks
             await db.execute(
                 """INSERT INTO completed_tasks 
-                   (original_task_id, user_id, task, category, priority, completed_by) 
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (task[0], task[1], task[2], task[3], task[4], completed_by)
+                   (original_task_id, channel_id, user_id, task, category, priority, completed_by) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (task[0], task[1], task[2], task[3], task[4], task[5], completed_by)
             )
             
             # Delete from active tasks
@@ -174,6 +196,22 @@ async def get_categories(user_id=None):
     
     async with aiosqlite.connect(DB_FILE) as db:
         cursor = await db.execute(query, params)
+        rows = await cursor.fetchall()
+        await cursor.close()
+        return [row[0] for row in rows]
+
+async def clear_channel(channel_id):
+    """Clear all tasks in a channel."""
+    async with aiosqlite.connect(DB_FILE) as db:
+        await db.execute("DELETE FROM tasks WHERE channel_id = ?", (channel_id,))
+        await db.commit()
+
+async def get_channels_with_tasks():
+    """Return distinct channel_ids that have active tasks."""
+    async with aiosqlite.connect(DB_FILE) as db:
+        cursor = await db.execute(
+            "SELECT DISTINCT channel_id FROM tasks WHERE channel_id IS NOT NULL ORDER BY channel_id"
+        )
         rows = await cursor.fetchall()
         await cursor.close()
         return [row[0] for row in rows]
