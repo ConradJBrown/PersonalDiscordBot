@@ -211,9 +211,8 @@ async def complete_task_cmd(ctx, index: int):
 @bot.command(name='todo_user', help="View tasks added by a user in this channel: !todo_user @username")
 async def display_todo_user(ctx, member: discord.Member):
     channel_id = ctx.channel.id
-    # Fetch channel tasks then filter by user attribution
     all_tasks = await get_tasks(channel_id=channel_id)
-    tasks = [t for t in all_tasks if t.get('user_id') == member.id or str(t.get('user_id')) == str(member.id)]
+    tasks = [t for t in all_tasks if t.get('user_id') == member.id]
     if not tasks:
         await ctx.send(f'No tasks found for {member.display_name} in **#{ctx.channel.name}**!')
         return
@@ -235,7 +234,7 @@ async def add_task_user(ctx, member: discord.Member, *, content):
 @bot.command(name='edit_user', help="Edit a user's task in this channel: !edit_user @username <num> <new_task>")
 async def edit_task_user(ctx, member: discord.Member, index: int, *, new_task):
     all_tasks = await get_tasks(channel_id=ctx.channel.id)
-    user_tasks = [t for t in all_tasks if str(t.get('user_id')) == str(member.id)]
+    user_tasks = [t for t in all_tasks if t.get('user_id') == member.id]
     if 1 <= index <= len(user_tasks):
         task_id = user_tasks[index - 1]["id"]
         
@@ -268,7 +267,7 @@ async def list_task_channels(ctx):
     channel_mentions = []
     for cid in channel_ids:
         ch = ctx.guild.get_channel(cid)
-        channel_mentions.append(f'**#{ch.name}**' if ch else f'<#{cid}>')
+        channel_mentions.append(f'**#{ch.name}**' if ch else f'Unknown channel (ID: {cid})')
 
     await ctx.send(f'Channels with active tasks: {", ".join(channel_mentions)}')
 

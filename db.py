@@ -74,7 +74,7 @@ async def migrate_schema():
 # -----------------------
 
 async def get_tasks(user_id=None, category=None, list_type=None, channel_id=None):
-    query = "SELECT id, task, category, priority, due_date, created_at FROM tasks"
+    query = "SELECT id, user_id, task, category, priority, due_date, created_at FROM tasks"
     conditions = []
     params = []
 
@@ -206,8 +206,8 @@ async def clear_channel(channel_id):
         await db.execute("DELETE FROM tasks WHERE channel_id = ?", (channel_id,))
         await db.commit()
 
-async def get_channels_with_tasks(guild_id=None):
-    """Return distinct channel_ids that have active tasks (optionally filtered by a list of channel ids)."""
+async def get_channels_with_tasks():
+    """Return distinct channel_ids that have active tasks."""
     async with aiosqlite.connect(DB_FILE) as db:
         cursor = await db.execute(
             "SELECT DISTINCT channel_id FROM tasks WHERE channel_id IS NOT NULL ORDER BY channel_id"
