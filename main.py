@@ -7,8 +7,9 @@ import asyncio
 from datetime import datetime, timedelta
 import random
 from db import (
-    migrate_schema, get_tasks, set_tasks, complete_task,
-    get_completed_tasks, get_categories, clear_category, get_task_summary,
+    migrate_schema, get_tasks, set_tasks, insert_task, complete_task,
+    get_completed_tasks, get_categories, clear_category, clear_channel,
+    get_channels_with_tasks, get_task_summary,
     add_dinner_idea, get_dinner_ideas, remove_dinner_idea
 )
 
@@ -33,23 +34,10 @@ PRIORITY_EMOJI = {
 }
 
 def parse_task_arguments(content: str):
-    """Parse task text, category, priority, and due date from command"""
+    """Parse task text, priority, and due date from command"""
     task_text = content
-    category = "general"
     priority = "medium"
     due_date = None
-    
-    # Parse category
-    if '--category=' in content:
-        task_text, category_part = content.split('--category=', 1)
-        # Check if there are more flags after category
-        if '--' in category_part:
-            parts = category_part.split('--', 1)
-            category = parts[0].strip()
-            task_text = task_text.strip() + ' --' + parts[1]
-        else:
-            category = category_part.strip()
-            task_text = task_text.strip()
     
     # Parse priority
     if '--priority=' in task_text:
@@ -65,7 +53,7 @@ def parse_task_arguments(content: str):
         task_text = parts[0].strip()
         due_date = parts[1].strip().split()[0]
     
-    return task_text.strip(), category, priority, due_date
+    return task_text.strip(), priority, due_date
 
 def format_task_display(task, index=None):
     """Format a task for display with priority and due date"""
@@ -87,6 +75,44 @@ async def on_ready():
     await migrate_schema()
     check_due_dates.start()  # Start the reminder task
     print(f'{bot.user.name} is online!')
+
+# ======================
+#   HOUSEHOLD SETUP
+# ======================
+
+HOUSEHOLD_ROOMS = [
+    'general',
+    'groceries',
+    'kitchen',
+    'living-room',
+    'bedroom',
+    'bathroom',
+    'garage',
+]
+
+@bot.command(name='setup_home', help='Creates a Home category with household channels. Usage: !setup_home')
+@commands.has_permissions(manage_channels=True)
+async def setup_home(ctx):
+    guild = ctx.guild
+    if not guild:
+        await ctx.send('This command can only be used in a server!')
+        return
+
+    existing = discord.utils.get(guild.categories, name='Home')
+    if existing:
+        await ctx.send('A **Home** category already exists! Use the existing channels to manage household tasks.')
+        return
+
+    await ctx.send('🏠 Setting up household channels...')
+    category = await guild.create_category('Home')
+    for room in HOUSEHOLD_ROOMS:
+        await guild.create_text_channel(room, category=category)
+
+    room_list = ', '.join(f'**#{r}**' for r in HOUSEHOLD_ROOMS)
+    await ctx.send(
+        f'✅ Created the **Home** category with channels: {room_list}\n'
+        f'Use `!add <task>` in any of these channels to add tasks to that room\'s list!'
+    )
 
 # ======================
 #    DUE DATE REMINDERS
@@ -125,58 +151,43 @@ async def before_check_due_dates():
 #        TASKS
 # ======================
 
-@bot.command(name='todo', help='Displays your personal todo list. Usage: !todo [category]')
-async def display_todo(ctx, category: str = None):
-    tasks = await get_tasks(user_id=ctx.author.id, category=category)
+@bot.command(name='todo', help='Displays the to-do list for this channel. Usage: !todo')
+async def display_todo(ctx):
+    channel_id = ctx.channel.id
+    tasks = await get_tasks(channel_id=channel_id)
     if not tasks:
-        category_msg = f"in **{category}** category" if category else ""
-        await ctx.send(f'No tasks found {category_msg}!')
+        await ctx.send(f'No tasks found in **#{ctx.channel.name}**!')
         return
 
-    header = f"**{category.capitalize()} Tasks:**" if category else "**Your Tasks:**"
-    await ctx.send(header)
+    await ctx.send(f'**📋 #{ctx.channel.name} Tasks:**')
     for i, task in enumerate(tasks, start=1):
         msg_text = format_task_display(task, i)
         msg = await ctx.send(msg_text)
         await msg.add_reaction("✅")
         bot.task_message_map[msg.id] = {
             "task_id": task["id"],
-            "user_id": ctx.author.id
+            "channel_id": channel_id
         }
         await asyncio.sleep(1.2)
 
-@bot.command(name='add', help='Adds a task. Usage: !add <task> [--category=name] [--priority=high/medium/low] [--due=YYYY-MM-DD]')
+@bot.command(name='add', help='Adds a task to this channel\'s list. Usage: !add <task> [--priority=high/medium/low] [--due=YYYY-MM-DD]')
 async def add_task(ctx, *, content):
-    task_text, category, priority, due_date = parse_task_arguments(content)
-    tasks = await get_tasks(user_id=ctx.author.id, category=category)
-    tasks.append({
-        "task": task_text, 
-        "category": category,
-        "priority": priority,
-        "due_date": due_date
-    })
-    await set_tasks(tasks, user_id=ctx.author.id, category=category)
+    task_text, priority, due_date = parse_task_arguments(content)
+    channel_id = ctx.channel.id
+    category = ctx.channel.name
+    await insert_task(channel_id, ctx.author.id, task_text, category=category, priority=priority, due_date=due_date)
     
     priority_emoji = PRIORITY_EMOJI.get(priority, '⚪')
     due_msg = f" due {due_date}" if due_date else ""
-    await ctx.send(f'Task added to **{category}** {priority_emoji}{due_msg}!')
+    await ctx.send(f'Task added to **#{ctx.channel.name}** {priority_emoji}{due_msg}!')
 
-@bot.command(name='edit', help='Edit a task: !edit <task_number> <new_task> [--category=name]')
+@bot.command(name='edit', help='Edit a task in this channel\'s list: !edit <task_number> <new_task>')
 async def edit_task(ctx, index: int, *, new_task):
-    # Parse category from the command if provided
-    category = None
-    if '--category=' in new_task:
-        new_task, category_part = new_task.split('--category=', 1)
-        category = category_part.strip()
-        new_task = new_task.strip()
-    
-    # Get tasks from the specified category or all tasks
-    tasks = await get_tasks(user_id=ctx.author.id, category=category)
+    tasks = await get_tasks(channel_id=ctx.channel.id)
     
     if 1 <= index <= len(tasks):
         task_id = tasks[index - 1]["id"]
         
-        # Update the task in the database directly
         async with aiosqlite.connect(DB_FILE) as db:
             await db.execute(
                 "UPDATE tasks SET task = ? WHERE id = ?",
@@ -188,53 +199,46 @@ async def edit_task(ctx, index: int, *, new_task):
     else:
         await ctx.send('Invalid task number!')
 
-@bot.command(name='complete', help='Mark a task as complete: !complete <task_number> [--category=name]')
-async def complete_task_cmd(ctx, index: int, *, args: str = ""):
-    # Parse category if provided
-    category = None
-    if '--category=' in args:
-        category = args.split('--category=', 1)[1].strip()
-    
-    tasks = await get_tasks(user_id=ctx.author.id, category=category)
+@bot.command(name='complete', help='Mark a task as complete: !complete <task_number>')
+async def complete_task_cmd(ctx, index: int):
+    tasks = await get_tasks(channel_id=ctx.channel.id)
     if 1 <= index <= len(tasks):
         await complete_task(tasks[index - 1]["id"], completed_by=ctx.author.id)
         await ctx.send(f'✅ Task {index} marked as completed!')
     else:
         await ctx.send('Invalid task number!')
 
-@bot.command(name='todo_user', help="View another user's list: !todo_user @username")
+@bot.command(name='todo_user', help="View tasks added by a user in this channel: !todo_user @username")
 async def display_todo_user(ctx, member: discord.Member):
-    tasks = await get_tasks(user_id=member.id)
+    channel_id = ctx.channel.id
+    # Fetch channel tasks then filter by user attribution
+    all_tasks = await get_tasks(channel_id=channel_id)
+    tasks = [t for t in all_tasks if t.get('user_id') == member.id or str(t.get('user_id')) == str(member.id)]
     if not tasks:
-        await ctx.send(f'No tasks found for {member.display_name}!')
+        await ctx.send(f'No tasks found for {member.display_name} in **#{ctx.channel.name}**!')
         return
 
-    await ctx.send(f"{member.display_name}'s Todo List:")
+    await ctx.send(f"**{member.display_name}'s tasks in #{ctx.channel.name}:**")
     for i, task in enumerate(tasks, start=1):
         await ctx.send(f'{i}. {task["task"]}')
 
-@bot.command(name='add_user', help="Adds a task to another user's list. Usage: !add_user @user <task> [--category=name] [--priority=high/medium/low]")
+@bot.command(name='add_user', help="Adds a task to this channel's list on behalf of another user. Usage: !add_user @user <task> [--priority=high/medium/low]")
 async def add_task_user(ctx, member: discord.Member, *, content):
-    task_text, category, priority, due_date = parse_task_arguments(content)
-    tasks = await get_tasks(user_id=member.id, category=category)
-    tasks.append({
-        "task": task_text,
-        "category": category,
-        "priority": priority,
-        "due_date": due_date
-    })
-    await set_tasks(tasks, user_id=member.id, category=category)
+    task_text, priority, due_date = parse_task_arguments(content)
+    channel_id = ctx.channel.id
+    category = ctx.channel.name
+    await insert_task(channel_id, member.id, task_text, category=category, priority=priority, due_date=due_date)
     
     priority_emoji = PRIORITY_EMOJI.get(priority, '⚪')
-    await ctx.send(f'Task added for {member.display_name} to **{category}** {priority_emoji}!')
+    await ctx.send(f'Task added for {member.display_name} to **#{ctx.channel.name}** {priority_emoji}!')
 
-@bot.command(name='edit_user', help="Edit a user's task: !edit_user @username <num> <new_task>")
+@bot.command(name='edit_user', help="Edit a user's task in this channel: !edit_user @username <num> <new_task>")
 async def edit_task_user(ctx, member: discord.Member, index: int, *, new_task):
-    tasks = await get_tasks(user_id=member.id)
-    if 1 <= index <= len(tasks):
-        task_id = tasks[index - 1]["id"]
+    all_tasks = await get_tasks(channel_id=ctx.channel.id)
+    user_tasks = [t for t in all_tasks if str(t.get('user_id')) == str(member.id)]
+    if 1 <= index <= len(user_tasks):
+        task_id = user_tasks[index - 1]["id"]
         
-        # Update the task in the database directly
         async with aiosqlite.connect(DB_FILE) as db:
             await db.execute(
                 "UPDATE tasks SET task = ? WHERE id = ?",
@@ -247,37 +251,40 @@ async def edit_task_user(ctx, member: discord.Member, index: int, *, new_task):
         await ctx.send('Invalid task number!')
 
 # ======================
-#  CATEGORY MANAGEMENT
+#  CHANNEL TASK MANAGEMENT
 # ======================
 
-@bot.command(name='categories', help='List all your task categories')
-async def list_categories(ctx):
-    categories = await get_categories(user_id=ctx.author.id)
-    if not categories:
-        await ctx.send('You have no task categories yet!')
+@bot.command(name='channels', help='List all channels that have active tasks')
+async def list_task_channels(ctx):
+    if not ctx.guild:
+        await ctx.send('This command can only be used in a server!')
         return
-    
-    category_list = ', '.join(f'**{cat}**' for cat in categories)
-    await ctx.send(f'Your categories: {category_list}')
 
-@bot.command(name='clear', help='Clear all tasks in a category (or all tasks). Usage: !clear [category]')
-async def clear_tasks(ctx, category: str = None):
-    if category:
-        await clear_category(ctx.author.id, category)
-        await ctx.send(f'Cleared all tasks in **{category}** category!')
-    else:
-        # Ask for confirmation for clearing all
-        await ctx.send('Are you sure you want to clear ALL your tasks? Reply with `yes` to confirm.')
-        
-        def check(m):
-            return m.author == ctx.author and m.channel == ctx.channel and m.content.lower() == 'yes'
-        
-        try:
-            await bot.wait_for('message', check=check, timeout=30.0)
-            await clear_category(ctx.author.id, None)
-            await ctx.send('All your tasks have been cleared!')
-        except asyncio.TimeoutError:
-            await ctx.send('Clear cancelled.')
+    channel_ids = await get_channels_with_tasks()
+    if not channel_ids:
+        await ctx.send('No channels have active tasks yet!')
+        return
+
+    channel_mentions = []
+    for cid in channel_ids:
+        ch = ctx.guild.get_channel(cid)
+        channel_mentions.append(f'**#{ch.name}**' if ch else f'<#{cid}>')
+
+    await ctx.send(f'Channels with active tasks: {", ".join(channel_mentions)}')
+
+@bot.command(name='clear', help='Clear all tasks in this channel. Usage: !clear')
+async def clear_tasks(ctx):
+    await ctx.send(f'Are you sure you want to clear ALL tasks in **#{ctx.channel.name}**? Reply with `yes` to confirm.')
+    
+    def check(m):
+        return m.author == ctx.author and m.channel == ctx.channel and m.content.lower() == 'yes'
+    
+    try:
+        await bot.wait_for('message', check=check, timeout=30.0)
+        await clear_channel(ctx.channel.id)
+        await ctx.send(f'All tasks in **#{ctx.channel.name}** have been cleared!')
+    except asyncio.TimeoutError:
+        await ctx.send('Clear cancelled.')
 
 # ======================
 #  TASK HISTORY
@@ -431,17 +438,13 @@ async def on_reaction_add(reaction, user):
         mapping = bot.task_message_map[msg_id]
         task_id = mapping["task_id"]
 
-        if mapping["user_id"] != "shared" and user.id != mapping["user_id"]:
-            await reaction.message.channel.send("You can't complete someone else's task.")
-            return
-
-        if mapping["user_id"] == "shared":
+        if mapping.get("user_id") == "shared":
             # For grocery items, just delete
             async with aiosqlite.connect(DB_FILE) as db:
                 await db.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
                 await db.commit()
         else:
-            # For regular tasks, move to completed_tasks
+            # For channel-based tasks, any channel member can complete
             await complete_task(task_id, completed_by=user.id)
 
         await reaction.message.channel.send(f'✅ Task completed by {user.display_name}!')
@@ -458,30 +461,36 @@ async def help_command(ctx, section: str = None):
     if section:
         section = section.lower()
         
+    if not section or section == 'home':
+        help_text = "**🏠 Household Setup:**\n"
+        help_text += "`!setup_home` - Create the **Home** category with household channels\n"
+        help_text += "`!channels` - List all channels that have active tasks\n"
+        await ctx.send(help_text)
+
     if not section or section == 'tasks':
-        help_text = "**📋 Task Commands:**\n"
-        help_text += "`!todo [category]` - Show your tasks\n"
-        help_text += "`!add <task> [--category=X] [--priority=high/medium/low] [--due=YYYY-MM-DD]` - Add a task\n"
-        help_text += "`!edit <num> <new_task>` - Edit a task\n"
-        help_text += "`!complete <num>` - Complete a task\n"
-        help_text += "`!categories` - List your categories\n"
-        help_text += "`!clear [category]` - Clear tasks\n"
-        help_text += "`!history [limit]` - View completed tasks\n"
+        help_text = "**📋 Task Commands** *(channel-based)*:\n"
+        help_text += "`!todo` - Show tasks for the current channel\n"
+        help_text += "`!add <task> [--priority=high/medium/low] [--due=YYYY-MM-DD]` - Add a task to this channel\n"
+        help_text += "`!edit <num> <new_task>` - Edit a task in this channel\n"
+        help_text += "`!complete <num>` - Complete a task in this channel\n"
+        help_text += "`!clear` - Clear all tasks in this channel\n"
+        help_text += "`!history [limit]` - View your completed tasks\n"
         help_text += "`!summary` - View task statistics\n"
         await ctx.send(help_text)
     
     if not section or section == 'user':
         help_text = "**👥 User Task Commands:**\n"
-        help_text += "`!todo_user @user` - View another user's tasks\n"
-        help_text += "`!add_user @user <task>` - Add task for another user\n"
-        help_text += "`!edit_user @user <num> <new_task>` - Edit user's task\n"
+        help_text += "`!todo_user @user` - View tasks added by a user in this channel\n"
+        help_text += "`!add_user @user <task>` - Add a task for another user in this channel\n"
+        help_text += "`!edit_user @user <num> <new_task>` - Edit a user's task in this channel\n"
         await ctx.send(help_text)
     
     if not section or section == 'grocery':
         help_text = "**🛒 Grocery Commands:**\n"
-        help_text += "`!grocery` - Show grocery list\n"
+        help_text += "`!grocery` - Show the shared grocery list\n"
         help_text += "`!grocery_add <item>` - Add to grocery list\n"
         help_text += "`!grocery_complete <num>` - Remove from grocery list\n"
+        help_text += "*Tip: Use `!add` in the **#groceries** channel instead for channel-based lists!*\n"
         await ctx.send(help_text)
     
     if not section or section == 'dinner':
@@ -493,7 +502,7 @@ async def help_command(ctx, section: str = None):
         await ctx.send(help_text)
     
     if not section:
-        help_text = "\n**ℹ️ Tip:** Use `!help tasks`, `!help grocery`, `!help dinner`, or `!help user` for specific sections"
+        help_text = "\n**ℹ️ Tip:** Use `!help home`, `!help tasks`, `!help grocery`, `!help dinner`, or `!help user` for specific sections"
         await ctx.send(help_text)
 
 # ======================
