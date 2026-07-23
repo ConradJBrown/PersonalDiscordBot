@@ -151,6 +151,43 @@ This bot uses **SQLite** with automatic schema migration:
 
 ---
 
+### 🖥️ Running with PM2 (Home Server)
+
+[PM2](https://pm2.keymetrics.io/) keeps the bot running in the background and automatically restarts it if it crashes.
+
+#### 1. Install PM2
+
+```bash
+npm install -g pm2
+```
+
+#### 2. Start the bot
+
+```bash
+pm2 start ecosystem.config.js
+```
+
+#### 3. Auto-start on system reboot
+
+```bash
+pm2 startup
+pm2 save
+```
+
+#### Useful PM2 commands
+
+| Command | Description |
+| ------- | ----------- |
+| `pm2 status` | View bot status |
+| `pm2 logs discord-bot` | Tail live logs |
+| `pm2 restart discord-bot` | Restart the bot |
+| `pm2 stop discord-bot` | Stop the bot |
+| `pm2 delete discord-bot` | Remove from PM2 |
+
+Logs are written to the `logs/` directory (`logs/out.log` and `logs/error.log`).
+
+---
+
 ### 🧪 Testing
 
 Run tests with pytest:

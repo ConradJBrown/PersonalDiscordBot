@@ -29,6 +29,7 @@ test*.db
 
 # Log files
 *.log
+logs/
 tasks.db
 __pycache__/db.cpython-313.pyc
 tasks.db.backup
